@@ -44,7 +44,7 @@ from aider.reasoning_tags import (
     replace_reasoning_tags,
 )
 from aider.repo import ANY_GIT_ERROR, GitRepo
-from aider.repomap import RepoMap
+from aider.type_repomap import TypeRepoMap
 from aider.run_cmd import run_cmd
 from aider.utils import format_content, format_messages, format_tokens, is_image_file
 from aider.waiting import WaitingSpinner
@@ -495,7 +495,7 @@ class Coder:
         has_map_prompt = hasattr(self, "gpt_prompts") and self.gpt_prompts.repo_content_prefix
 
         if use_repo_map and self.repo and has_map_prompt:
-            self.repo_map = RepoMap(
+            self.repo_map = TypeRepoMap(
                 map_tokens,
                 self.root,
                 self.main_model,
@@ -712,6 +712,7 @@ class Coder:
 
         cur_msg_text = self.get_cur_message_text()
         mentioned_fnames = self.get_file_mentions(cur_msg_text)
+        mentioned_target_functions = self.get_target_function_mentions(cur_msg_text)
         mentioned_idents = self.get_ident_mentions(cur_msg_text)
 
         mentioned_fnames.update(self.get_ident_filename_matches(mentioned_idents))
@@ -726,6 +727,7 @@ class Coder:
             other_files,
             mentioned_fnames=mentioned_fnames,
             mentioned_idents=mentioned_idents,
+            mentioned_target_functions=mentioned_target_functions,
             force_refresh=force_refresh,
         )
 
@@ -736,6 +738,7 @@ class Coder:
                 all_abs_files,
                 mentioned_fnames=mentioned_fnames,
                 mentioned_idents=mentioned_idents,
+                mentioned_target_functions=mentioned_target_functions,
             )
 
         # fall back to completely unhinted repo
@@ -751,6 +754,9 @@ class Coder:
         repo_messages = []
         repo_content = self.get_repo_map()
         if repo_content:
+            # self.io.tool_output("===== REPO MAP BEGIN =====")
+            # print(repo_content)
+            # self.io.tool_output("===== REPO MAP END =====")
             repo_messages += [
                 dict(role="user", content=repo_content),
                 dict(
@@ -1757,6 +1763,19 @@ class Coder:
                 mentioned_rel_fnames.add(rel_fnames[0])
 
         return mentioned_rel_fnames
+
+    def get_target_function_mentions(self, content):
+        # Given the content, it includes a message like "**Target Function**: Sample.foo"
+        # Then, we want to extract "Sample.foo" and check if it's in our list of functions, and if so, return it as a mentioned function. 
+        pattern = r"\*\*Target Function\*\*:\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)"
+        matches = re.findall(pattern, content)
+
+        mentioned_functions = set()
+        for match in matches:
+            mentioned_func = match.strip()
+            mentioned_functions.add(mentioned_func)
+
+        return mentioned_functions
 
     def check_for_file_mentions(self, content):
         mentioned_rel_fnames = self.get_file_mentions(content)
